@@ -1,12 +1,12 @@
-static mut RAND_STATE: usize = 0;
+static mut RAND_STATE: u64 = 0;
 
-pub fn srand(s: usize) {
+pub fn srand(s: u64) {
     unsafe {
         RAND_STATE = s
     }
 }
 
-pub fn rand() -> usize {
+pub fn rand() -> u64 {
     unsafe {
         let mut a = RAND_STATE;
         a ^= a << 13;

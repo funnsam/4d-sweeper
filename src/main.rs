@@ -7,7 +7,7 @@ use minesweeper::*;
 use rand::*;
 
 fn main() {
-    srand(time::SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as usize);
+    srand(time::SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u64);
     let mut stdout = std::io::stdout();
     terminal::enable_raw_mode().unwrap();
     execute!(stdout, terminal::EnterAlternateScreen, cursor::Show, cursor::SetCursorStyle::SteadyBlock, event::EnableMouseCapture).unwrap();
@@ -109,7 +109,18 @@ fn render(stdout: &mut std::io::Stdout, game: &Game) {
                 ),
                 cursor::MoveTo(game.selected.0*2, game.selected.1 + 1)
             ).unwrap();
-        }
+        },
+        GameState::Won => {
+            queue!(stdout,
+                cursor::MoveTo(0, 0),
+                style::PrintStyledContent(
+                    "\u{f04e0}"
+                        .with(Color::Yellow)
+                        .attribute(Attribute::Bold)
+                ),
+                cursor::MoveTo(game.selected.0*2, game.selected.1 + 1)
+            ).unwrap();
+        },
     }
     stdout.flush().unwrap();
 }
@@ -119,23 +130,19 @@ fn render_board(stdout: &mut std::io::Stdout, game: &Game) {
         for x in 0..game.dists[0].len() {
             queue!(stdout,
                 cursor::MoveTo((x*2) as u16, y as u16 + 1),
-                style::Print(
-                    match game.dists[y][x] {
-                        0b1_0000..=0b1_1111
-                            => "\u{f024}".to_string(),
-                        10
-                            => if game.opened[y][x] {
-                                "\u{f0dda}".to_string()
-                            } else {
-                                "?".to_string()
-                            },
-                        _
-                            => if game.opened[y][x] {
-                                game.dists[y][x].to_string()
-                            } else {
-                               "?".to_string()
-                            },
-                    }
+                style::PrintStyledContent(
+                    match (game.dists[y][x], game.opened[y][x]) {
+                        (0b1_0000..=0b1_1111, _) => "\u{f024}".to_string(),
+                        (10, true) => "\u{f0dda}".to_string(),
+                        (n, true) => n.to_string(),
+                        (_, false) => "?".to_string()
+                    }.with(match (game.dists[y][x], game.opened[y][x]) {
+                        ( 0, true) => Color::Black,
+                        (10, true) => Color::White,
+                        (0b1_0000..=0b1_1111, _) => Color::DarkRed,
+                        (_, true) => Color::DarkBlue,
+                        (_, false) => Color::DarkGrey,
+                    })
                 )
             ).unwrap();
         }

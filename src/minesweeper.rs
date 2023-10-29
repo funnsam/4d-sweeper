@@ -1,7 +1,7 @@
 use crate::rand::rand;
 
 pub enum GameState {
-    Normal, Dead
+    Normal, Dead, Won
 }
 
 pub struct Game {
@@ -27,6 +27,9 @@ impl Game {
     }
     pub fn open(&mut self) {
         self._open(self.selected);
+        if matches!(self.state, GameState::Normal) && self.opened.iter().flatten().zip(self.dists.iter().flatten()).fold(true, |a, (b, c)| a & (*b || c & 0b1111 == 10)) {
+            self.state = GameState::Won;
+        }
     }
     fn _open(&mut self, a: (u16, u16)) {
         let d = self.dists[a.1 as usize][a.0 as usize];
@@ -67,8 +70,10 @@ impl Game {
         for _ in 0..mines {
             let mut okay = false;
             while !okay {
-                let x = rand() % self.dists[0].len();
-                let y = rand() % self.dists.len();
+                let x = rand() % self.dists[0].len() as u64;
+                let y = rand() % self.dists.len() as u64;
+                let x = x as usize;
+                let y = y as usize;
                 if self.dists[y][x] != 10 {
                     self.dists[y][x] = 10;
                     okay = true
