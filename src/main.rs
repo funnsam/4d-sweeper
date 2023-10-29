@@ -131,15 +131,15 @@ fn render_board(stdout: &mut std::io::Stdout, game: &Game) {
             queue!(stdout,
                 cursor::MoveTo((x*2) as u16, y as u16 + 1),
                 style::PrintStyledContent(
-                    match (game.dists[y][x], game.opened[y][x]) {
-                        (0b1_0000..=0b1_1111, _) => "\u{f024}".to_string(),
-                        (10, true) => "\u{f0dda}".to_string(),
-                        (n, true) => n.to_string(),
+                    match (&game.dists[y][x], game.opened[y][x]) {
+                        (Cell::Flagged(_) | Cell::FlaggedMine, _) => "\u{f024}".to_string(),
+                        (Cell::Mine, true) => "\u{f0dda}".to_string(),
+                        (Cell::Number(n), true) => n.to_string(),
                         (_, false) => "?".to_string()
-                    }.with(match (game.dists[y][x], game.opened[y][x]) {
-                        ( 0, true) => Color::Black,
-                        (10, true) => Color::White,
-                        (0b1_0000..=0b1_1111, _) => Color::DarkRed,
+                    }.with(match (&game.dists[y][x], game.opened[y][x]) {
+                        (Cell::Number( 0), true) => Color::Black,
+                        (Cell::Mine, true) => Color::White,
+                        (Cell::Flagged(_) | Cell::FlaggedMine, _) => Color::DarkRed,
                         (_, true) => Color::DarkBlue,
                         (_, false) => Color::DarkGrey,
                     })
