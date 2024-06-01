@@ -27,29 +27,29 @@ fn main() {
                         .. 
                     }) => {
                         terminal::disable_raw_mode().unwrap();
-                        execute!(stdout, terminal::LeaveAlternateScreen).unwrap();
+                        execute!(stdout, terminal::LeaveAlternateScreen, cursor::SetCursorStyle::DefaultUserShape, event::DisableMouseCapture).unwrap();
                         std::process::exit(0)
                     },
                     Event::Key(KeyEvent {
                         code: KeyCode::Char('w') | KeyCode::Up,
                         kind: KeyEventKind::Press,
                         ..
-                    }) => game.selected.1 = (game.selected.1 as i16 - 1).max(0) as u16,
+                    }) => game.selected[1] = game.selected[1].saturating_sub(1),
                     Event::Key(KeyEvent {
                         code: KeyCode::Char('s') | KeyCode::Down,
                         kind: KeyEventKind::Press,
                         ..
-                    }) => game.selected.1 = (game.selected.1 as i16 + 1).min(game.cells.len() as i16 - 1) as u16,
+                    }) => game.selected[1] = (game.selected[1] + 1).min(game.size[1] - 1),
                     Event::Key(KeyEvent {
                         code: KeyCode::Char('a') | KeyCode::Left,
                         kind: KeyEventKind::Press,
                         ..
-                    }) => game.selected.0 = (game.selected.0 as i16 - 1).max(0) as u16,
+                    }) => game.selected[0] = game.selected[0].saturating_sub(1),
                     Event::Key(KeyEvent {
                         code: KeyCode::Char('d') | KeyCode::Right,
                         kind: KeyEventKind::Press,
                         ..
-                    }) => game.selected.0 = (game.selected.0 as i16 + 1).min(game.cells[0].len() as i16 - 1) as u16,
+                    }) => game.selected[0] = (game.selected[0] + 1).min(game.size[0] - 1),
                     Event::Key(KeyEvent {
                         code: KeyCode::Char('j'),
                         kind: KeyEventKind::Press,
@@ -70,10 +70,10 @@ fn main() {
                         column,
                         row,
                         ..
-                    }) => game.selected = (
-                        (column / 2).min(game.cells[0].len() as u16 - 1),
-                        (row.checked_sub(1).unwrap_or(0)).min(game.cells.len() as u16 - 1),
-                    ),
+                    }) => game.selected = vec![
+                        (column as usize / 2).min(game.size[0] - 1),
+                        (row.saturating_sub(1) as usize).min(game.size[1] - 1),
+                    ],
                     Event::Resize(..) => execute!(stdout, terminal::Clear(terminal::ClearType::All)).unwrap(),
                     _ => ()
                 }
@@ -96,7 +96,6 @@ fn render(stdout: &mut std::io::Stdout, game: &Game) {
                         .with(Color::Yellow)
                         .attribute(Attribute::Bold)
                 ),
-                cursor::MoveTo(game.selected.0*2, game.selected.1 + 1)
             ).unwrap();
         },
         GameState::Dead => {
@@ -107,7 +106,6 @@ fn render(stdout: &mut std::io::Stdout, game: &Game) {
                         .with(Color::Yellow)
                         .attribute(Attribute::Bold)
                 ),
-                cursor::MoveTo(game.selected.0*2, game.selected.1 + 1)
             ).unwrap();
         },
         GameState::Won => {
@@ -118,25 +116,25 @@ fn render(stdout: &mut std::io::Stdout, game: &Game) {
                         .with(Color::Yellow)
                         .attribute(Attribute::Bold)
                 ),
-                cursor::MoveTo(game.selected.0*2, game.selected.1 + 1)
             ).unwrap();
         },
     }
+    queue!(stdout, cursor::MoveTo(game.selected[0] as u16 * 2, game.selected[1] as u16 + 1)).unwrap();
     stdout.flush().unwrap();
 }
 
 fn render_board(stdout: &mut std::io::Stdout, game: &Game) {
-    for y in 0..game.cells.len() {
-        for x in 0..game.cells[0].len() {
+    for y in 0..game.size[1] {
+        for x in 0..game.size[0] {
             queue!(stdout,
-                cursor::MoveTo((x*2) as u16, y as u16 + 1),
+                cursor::MoveTo((x * 2) as u16, y as u16 + 1),
                 style::PrintStyledContent(
-                    match &game.cells[y][x] {
+                    match game.get(&[x, y]).unwrap() {
                         Cell { flagged: true, .. } => "\u{f024}".to_string(),
                         Cell { typ: CellType::Mine, opened: true, .. } => "\u{f0dda}".to_string(),
                         Cell { typ: CellType::Number(n), opened: true, .. } => n.to_string(),
                         Cell { opened: false, .. } => "?".to_string()
-                    }.with(match &game.cells[y][x] {
+                    }.with(match game.get(&[x, y]).unwrap() {
                         Cell { typ: CellType::Number(0), opened: true, .. } => Color::Black,
                         Cell { typ: CellType::Mine, opened: true, .. } => Color::White,
                         Cell { flagged: true, .. } => Color::DarkRed,

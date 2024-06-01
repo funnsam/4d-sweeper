@@ -18,49 +18,77 @@ pub enum CellType {
 }
 
 pub struct Game {
-    pub cells: Vec<Vec<Cell>>,
-    pub selected: (u16, u16),
+    pub cells: Vec<Cell>,
+    pub size: Vec<usize>,
+
+    pub selected: Vec<usize>,
     pub state: GameState,
 }
 
 impl Game {
     pub fn new(width: usize, height: usize, mines: usize) -> Self {
         let mut a = Self {
-            cells: vec![vec![Cell {
+            cells: vec![Cell {
                 typ: CellType::Number(0),
                 flagged: false,
                 opened: false,
-            }; width]; height],
+            }; width * height],
 
-            selected: (0, 0),
+            size: vec![width, height],
+
+            selected: vec![0; 2],
             state: GameState::Normal
         };
         a.scramble(mines);
         a.update();
         a
     }
+
+    pub fn get_mut(&mut self, at: &[usize]) -> Option<&mut Cell> {
+        self.get(at).map(|i| unsafe {
+            #[allow(mutable_transmutes)]
+            core::mem::transmute(i)
+        })
+    }
+
+    pub fn get(&self, at: &[usize]) -> Option<&Cell> {
+        assert_eq!(at.len(), self.size.len());
+
+        let mut index = 0;
+        for (i, s) in at.iter().rev().zip(self.size.iter().rev()) {
+            if s <= i { return None; }
+
+            index *= *s;
+            index += i;
+        }
+
+        Some(&self.cells[index])
+    }
+
     pub fn open(&mut self) {
-        self._open(self.selected);
-        if matches!(self.state, GameState::Normal) && self.cells.iter().flatten().fold(true, |a, c| a & (c.opened || matches!(c.typ, CellType::Mine))) {
+        self._open(&self.selected.clone());
+        if matches!(self.state, GameState::Normal) && self.cells.iter().fold(true, |a, c| a & (c.opened || matches!(c.typ, CellType::Mine))) {
             self.on_win()
         }
     }
-    fn _open(&mut self, a: (u16, u16)) {
-        let c = &mut self.cells[a.1 as usize][a.0 as usize];
+
+    fn _open(&mut self, a: &[usize]) {
+        let c = self.get_mut(a).unwrap();
         if !c.flagged && !c.opened {
             if matches!(c.typ, CellType::Mine) {
                 self.on_lose();
                 return;
             }
             c.opened = true;
+
             if matches!(c.typ, CellType::Number(0)) {
-                for y in a.1 as i16 - 1 ..= a.1 as i16 + 1 {
-                    if y.is_negative() || y as usize >= self.cells.len() { continue; }
-                    for x in a.0 as i16 - 1 ..= a.0 as i16 + 1 {
-                        if x.is_negative() || x as usize >= self.cells[0].len() { continue; }
-                        self._open((x as u16, y as u16));
-                    }
-                }
+                // for y in a.1 as i16 - 1 ..= a.1 as i16 + 1 {
+                //     if y.is_negative() || y as usize >= self.cells.len() { continue; }
+                //     for x in a.0 as i16 - 1 ..= a.0 as i16 + 1 {
+                //         if x.is_negative() || x as usize >= self.cells[0].len() { continue; }
+                //         self._open((x as u16, y as u16));
+                //     }
+                // }
             }
         }
     }
@@ -76,28 +104,26 @@ impl Game {
     }
 
     fn reveal_all(&mut self) {
-        for y in self.cells.iter_mut() {
-            for x in y.iter_mut() {
-                x.opened = true;
-                x.flagged = false;
-            }
+        for i in self.cells.iter_mut() {
+            i.opened = true;
+            i.flagged = false;
         }
     }
 
     pub fn flag(&mut self) {
-        self.cells[self.selected.1 as usize][self.selected.0 as usize].flagged ^= true;
+        self.get_mut(&self.selected.clone()).unwrap().flagged ^= true;
     }
 
     fn scramble(&mut self, mines: usize) {
         for _ in 0..mines {
             let mut okay = false;
             while !okay {
-                let x = rand() % self.cells[0].len() as u64;
-                let y = rand() % self.cells.len() as u64;
+                let x = rand() % self.size[0] as u64;
+                let y = rand() % self.size[1] as u64;
                 let x = x as usize;
                 let y = y as usize;
-                if !matches!(self.cells[y][x].typ, CellType::Mine) {
-                    self.cells[y][x].typ = CellType::Mine;
+                if !matches!(self.get(&[x, y]).unwrap().typ, CellType::Mine) {
+                    self.get_mut(&[x, y]).unwrap().typ = CellType::Mine;
                     okay = true
                 }
             }
@@ -106,20 +132,30 @@ impl Game {
 
     fn update(&mut self) {
         for i in 0..self.cells.len() {
-            for j in 0..self.cells[0].len() {
-                if matches!(self.cells[i][j].typ, CellType::Mine) { continue }
-                let mut mines = 0;
-                for k in i as i32 - 1 ..= i as i32 + 1 {
-                    for l in j as i32 - 1 ..= j as i32 + 1 {
-                        let ke = self.cells.get(k as usize).unwrap_or(&vec![]).clone();
-                        if matches!(*ke.get(l as usize).map_or(&CellType::Number(0), |i| &i.typ), CellType::Mine) {
-                            mines += 1;
-                        }
-                    }
-                }
+            if matches!(self.cells[i].typ, CellType::Mine) { continue }
 
-                self.cells[i][j].typ = CellType::Number(mines);
+            let mut mines = 0;
+            for i in neighbours(&self.factor(i), &self.size) {
+                eprintln!("{i:?}");
+                mines += matches!(self.get(&i).unwrap().typ, CellType::Mine) as usize;
             }
+            self.cells[i].typ = CellType::Number(mines);
         }
     }
+
+    fn factor(&self, at: usize) -> Vec<usize> {
+        // TODO: multidim
+        vec![at % self.size[0], at / self.size[0]]
+    }
+}
+
+// TODO: multidim
+fn neighbours(at: &[usize], dim: &[usize]) -> impl Iterator<Item = Vec<usize>> {
+    let ranges = at.iter().enumerate().map(|(i, p)| if *p > 0 {
+        p - 1..(p + 2).min(dim[i])
+    } else {
+        0..2
+    }).collect::<Vec<core::ops::Range<usize>>>();
+    ranges[0].clone()
+        .flat_map(move |i| ranges[1].clone().map(move |j| vec![i, j]))
 }
