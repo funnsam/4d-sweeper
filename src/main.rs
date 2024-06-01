@@ -39,7 +39,7 @@ fn main() {
                         code: KeyCode::Char('s') | KeyCode::Down,
                         kind: KeyEventKind::Press,
                         ..
-                    }) => game.selected.1 = (game.selected.1 as i16 + 1).min(game.dists.len() as i16 - 1) as u16,
+                    }) => game.selected.1 = (game.selected.1 as i16 + 1).min(game.cells.len() as i16 - 1) as u16,
                     Event::Key(KeyEvent {
                         code: KeyCode::Char('a') | KeyCode::Left,
                         kind: KeyEventKind::Press,
@@ -49,7 +49,7 @@ fn main() {
                         code: KeyCode::Char('d') | KeyCode::Right,
                         kind: KeyEventKind::Press,
                         ..
-                    }) => game.selected.0 = (game.selected.0 as i16 + 1).min(game.dists[0].len() as i16 - 1) as u16,
+                    }) => game.selected.0 = (game.selected.0 as i16 + 1).min(game.cells[0].len() as i16 - 1) as u16,
                     Event::Key(KeyEvent {
                         code: KeyCode::Char('j'),
                         kind: KeyEventKind::Press,
@@ -71,8 +71,8 @@ fn main() {
                         row,
                         ..
                     }) => game.selected = (
-                        (column / 2).min(game.dists[0].len() as u16 - 1),
-                        (row.checked_sub(1).unwrap_or(0)).min(game.dists.len() as u16 - 1),
+                        (column / 2).min(game.cells[0].len() as u16 - 1),
+                        (row.checked_sub(1).unwrap_or(0)).min(game.cells.len() as u16 - 1),
                     ),
                     Event::Resize(..) => execute!(stdout, terminal::Clear(terminal::ClearType::All)).unwrap(),
                     _ => ()
@@ -126,22 +126,22 @@ fn render(stdout: &mut std::io::Stdout, game: &Game) {
 }
 
 fn render_board(stdout: &mut std::io::Stdout, game: &Game) {
-    for y in 0..game.dists.len() {
-        for x in 0..game.dists[0].len() {
+    for y in 0..game.cells.len() {
+        for x in 0..game.cells[0].len() {
             queue!(stdout,
                 cursor::MoveTo((x*2) as u16, y as u16 + 1),
                 style::PrintStyledContent(
-                    match (&game.dists[y][x], game.opened[y][x]) {
-                        (Cell::Flagged(_) | Cell::FlaggedMine, _) => "\u{f024}".to_string(),
-                        (Cell::Mine, true) => "\u{f0dda}".to_string(),
-                        (Cell::Number(n), true) => n.to_string(),
-                        (_, false) => "?".to_string()
-                    }.with(match (&game.dists[y][x], game.opened[y][x]) {
-                        (Cell::Number( 0), true) => Color::Black,
-                        (Cell::Mine, true) => Color::White,
-                        (Cell::Flagged(_) | Cell::FlaggedMine, _) => Color::DarkRed,
-                        (_, true) => Color::DarkBlue,
-                        (_, false) => Color::DarkGrey,
+                    match &game.cells[y][x] {
+                        Cell { flagged: true, .. } => "\u{f024}".to_string(),
+                        Cell { typ: CellType::Mine, opened: true, .. } => "\u{f0dda}".to_string(),
+                        Cell { typ: CellType::Number(n), opened: true, .. } => n.to_string(),
+                        Cell { opened: false, .. } => "?".to_string()
+                    }.with(match &game.cells[y][x] {
+                        Cell { typ: CellType::Number(0), opened: true, .. } => Color::Black,
+                        Cell { typ: CellType::Mine, opened: true, .. } => Color::White,
+                        Cell { flagged: true, .. } => Color::DarkRed,
+                        Cell { opened: true, .. } => Color::DarkBlue,
+                        Cell { opened: false, .. } => Color::DarkGrey,
                     })
                 )
             ).unwrap();
