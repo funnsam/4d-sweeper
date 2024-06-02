@@ -7,3 +7,7 @@ edition = "2021"
 
 [dependencies]
 crossterm = "0.26.1"
+
+[features]
+default = ["auto_reduce"]
+auto_reduce = []

@@ -26,17 +26,20 @@ pub struct Game {
 }
 
 impl Game {
-    pub fn new(width: usize, height: usize, mines: usize) -> Self {
+    pub fn new(size: Vec<usize>, mines: usize) -> Self {
+        let sz = size.iter().fold(1, |i, j| i * *j);
+        let dim = size.len();
+
         let mut a = Self {
             cells: vec![Cell {
                 typ: CellType::Number(0),
                 flagged: false,
                 opened: false,
-            }; width * height],
+            }; sz],
 
-            size: vec![width, height],
+            size,
 
-            selected: vec![0; 2],
+            selected: vec![0; dim],
             state: GameState::Normal
         };
         a.scramble(mines);
@@ -114,12 +117,9 @@ impl Game {
         for _ in 0..mines {
             let mut okay = false;
             while !okay {
-                let x = rand() % self.size[0] as u64;
-                let y = rand() % self.size[1] as u64;
-                let x = x as usize;
-                let y = y as usize;
-                if !matches!(self.get(&[x, y]).unwrap().typ, CellType::Mine) {
-                    self.get_mut(&[x, y]).unwrap().typ = CellType::Mine;
+                let c = self.size.iter().map(|s| (rand() % *s as u64) as usize).collect::<Vec<usize>>();
+                if !matches!(self.get(&c).unwrap().typ, CellType::Mine) {
+                    self.get_mut(&c).unwrap().typ = CellType::Mine;
                     okay = true
                 }
             }
@@ -140,13 +140,13 @@ impl Game {
     }
 }
 
-fn neighbours(at: &[usize], dim: &[usize]) -> impl Iterator<Item = Vec<usize>> {
-    fn make(mut v: Vec<core::ops::Range<usize>>) -> Box<dyn Iterator<Item = Vec<usize>>> {
+pub fn neighbours(at: &[usize], dim: &[usize]) -> impl Iterator<Item = Vec<usize>> {
+    fn make(mut v: Vec<core::ops::Range<usize>>, _i: usize) -> Box<dyn Iterator<Item = Vec<usize>>> {
         if v.len() == 1 {
             Box::new(v.swap_remove(0).map(|i| vec![i]))
         } else {
-            Box::new(v.swap_remove(0).flat_map(move |i| make(v.clone()).map(move |mut k| {
-                k.insert(0, i);
+            Box::new(v.swap_remove(0).flat_map(move |i| make(v.clone(), _i + 1).map(move |mut k| {
+                k.insert(_i, i);
                 k
             })))
         }
@@ -158,10 +158,20 @@ fn neighbours(at: &[usize], dim: &[usize]) -> impl Iterator<Item = Vec<usize>> {
         0..2
     }).collect::<Vec<core::ops::Range<usize>>>();
 
-    make(ranges)
+    make(ranges, 0)
 }
 
-fn cells<'a>(dim: &'a [usize]) -> impl Iterator<Item = Vec<usize>> + 'a {
+#[test]
+fn nei() {
+    let i = neighbours(&[1, 2, 3], &[4, 4, 4]).collect::<Vec<_>>();
+    println!("{i:?}");
+}
+
+pub fn is_neighbour_of(a: &[usize], b: &[usize]) -> bool {
+    a.iter().zip(b.iter()).try_fold((), |_, (a, b)| (a.abs_diff(*b) < 2).then_some(())).is_some()
+}
+
+pub fn cells<'a>(dim: &'a [usize]) -> impl Iterator<Item = Vec<usize>> + 'a {
     fn make<'a>(v: &'a [usize]) -> Box<dyn Iterator<Item = Vec<usize>> + 'a> {
         if v.len() == 1 {
             Box::new((0..v[0]).map(|i| vec![i]))
