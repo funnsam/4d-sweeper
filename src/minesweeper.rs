@@ -82,13 +82,9 @@ impl Game {
             c.opened = true;
 
             if matches!(c.typ, CellType::Number(0)) {
-                // for y in a.1 as i16 - 1 ..= a.1 as i16 + 1 {
-                //     if y.is_negative() || y as usize >= self.cells.len() { continue; }
-                //     for x in a.0 as i16 - 1 ..= a.0 as i16 + 1 {
-                //         if x.is_negative() || x as usize >= self.cells[0].len() { continue; }
-                //         self._open((x as u16, y as u16));
-                //     }
-                // }
+                for i in neighbours(a, &self.size) {
+                    self._open(&i);
+                }
             }
         }
     }
@@ -131,31 +127,51 @@ impl Game {
     }
 
     fn update(&mut self) {
-        for i in 0..self.cells.len() {
-            if matches!(self.cells[i].typ, CellType::Mine) { continue }
+        for i in cells(&self.size.clone()) {
+            if matches!(self.get(&i).unwrap().typ, CellType::Mine) { continue }
 
             let mut mines = 0;
-            for i in neighbours(&self.factor(i), &self.size) {
-                eprintln!("{i:?}");
+            for i in neighbours(&i, &self.size) {
                 mines += matches!(self.get(&i).unwrap().typ, CellType::Mine) as usize;
             }
-            self.cells[i].typ = CellType::Number(mines);
-        }
-    }
 
-    fn factor(&self, at: usize) -> Vec<usize> {
-        // TODO: multidim
-        vec![at % self.size[0], at / self.size[0]]
+            self.get_mut(&i).unwrap().typ = CellType::Number(mines);
+        }
     }
 }
 
-// TODO: multidim
 fn neighbours(at: &[usize], dim: &[usize]) -> impl Iterator<Item = Vec<usize>> {
+    fn make(mut v: Vec<core::ops::Range<usize>>) -> Box<dyn Iterator<Item = Vec<usize>>> {
+        if v.len() == 1 {
+            Box::new(v.swap_remove(0).map(|i| vec![i]))
+        } else {
+            Box::new(v.swap_remove(0).flat_map(move |i| make(v.clone()).map(move |mut k| {
+                k.insert(0, i);
+                k
+            })))
+        }
+    }
+
     let ranges = at.iter().enumerate().map(|(i, p)| if *p > 0 {
         p - 1..(p + 2).min(dim[i])
     } else {
         0..2
     }).collect::<Vec<core::ops::Range<usize>>>();
-    ranges[0].clone()
-        .flat_map(move |i| ranges[1].clone().map(move |j| vec![i, j]))
+
+    make(ranges)
+}
+
+fn cells<'a>(dim: &'a [usize]) -> impl Iterator<Item = Vec<usize>> + 'a {
+    fn make<'a>(v: &'a [usize]) -> Box<dyn Iterator<Item = Vec<usize>> + 'a> {
+        if v.len() == 1 {
+            Box::new((0..v[0]).map(|i| vec![i]))
+        } else {
+            Box::new((0..v[0]).flat_map(|i| make(&v[1..]).map(move |mut j| {
+                j.insert(0, i);
+                j
+            })))
+        }
+    }
+
+    make(dim)
 }
