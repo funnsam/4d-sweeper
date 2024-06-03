@@ -18,88 +18,86 @@ const NAV: &[[(KeyCode, KeyModifiers); 2]] = &[
 ];
 
 fn new_game() -> Game {
-    Game::new(vec![3, 3, 3, 3, 3], 6)
+    Game::new(vec![4, 4, 4, 4], 6)
 }
 
 fn main() {
-    srand(time::SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u64);
+    seed(UNIX_EPOCH.elapsed().unwrap().as_secs() as u64);
     let mut stdout = std::io::stdout();
     terminal::enable_raw_mode().unwrap();
     execute!(stdout, terminal::EnterAlternateScreen, cursor::Hide, event::EnableMouseCapture).unwrap();
 
     let mut game = new_game();
 
-    let mspc = ((1.0 / 10.0) * 1_000_000.0) as u128;
     loop {
-        let started_at = time::SystemTime::now();
-        if event::poll(time::Duration::from_nanos(1)).unwrap() {
-            if let Ok(key) = event::read() {
-                match key {
-                    Event::Key(KeyEvent {
-                        code: KeyCode::Esc,
-                        modifiers: KeyModifiers::NONE,
-                        kind: KeyEventKind::Press,
-                        ..
-                    }) => {
-                        terminal::disable_raw_mode().unwrap();
-                        execute!(stdout, terminal::LeaveAlternateScreen, cursor::Show, event::DisableMouseCapture).unwrap();
-                        std::process::exit(0)
-                    },
+        if let Ok(key) = event::read() {
+            match key {
+                Event::Key(KeyEvent {
+                    code: KeyCode::Esc,
+                    modifiers: KeyModifiers::NONE,
+                    kind: KeyEventKind::Press,
+                    ..
+                }) => {
+                    terminal::disable_raw_mode().unwrap();
+                    execute!(stdout, terminal::LeaveAlternateScreen, cursor::Show, event::DisableMouseCapture).unwrap();
+                    std::process::exit(0)
+                },
 
-                    Event::Key(KeyEvent {
-                        code,
-                        kind: KeyEventKind::Press,
-                        modifiers,
-                        ..
-                    }) if NAV.iter().any(|i| i[0] == (code, modifiers)) => {
-                        let i = NAV.iter().enumerate().find(|(_, i)| i[0] == (code, modifiers)).unwrap().0;
-                        game.selected[i] = game.selected[i].saturating_sub(1);
-                    },
-                    Event::Key(KeyEvent {
-                        code,
-                        kind: KeyEventKind::Press,
-                        modifiers,
-                        ..
-                    }) if NAV.iter().any(|i| i[1] == (code, modifiers)) => {
-                        let i = NAV.iter().enumerate().find(|(_, i)| i[1] == (code, modifiers)).unwrap().0;
-                        game.selected[i] = (game.selected[i] + 1).min(game.size[1] - 1);
-                    },
+                // navigation
+                Event::Key(KeyEvent {
+                    code,
+                    kind: KeyEventKind::Press,
+                    modifiers,
+                    ..
+                }) if NAV.iter().take(game.size.len()).any(|(_, i)| i[0] == (code, modifiers)) => {
+                    let i = NAV.iter().enumerate().find(|(_, i)| i[0] == (code, modifiers)).unwrap().0;
+                    game.selected[i] = game.selected[i].saturating_sub(1);
+                },
+                Event::Key(KeyEvent {
+                    code,
+                    kind: KeyEventKind::Press,
+                    modifiers,
+                    ..
+                }) if NAV.iter().take(game.size.len()).any(|(_, i)| i[1] == (code, modifiers)) => {
+                    let i = NAV.iter().enumerate().find(|(_, i)| i[1] == (code, modifiers)).unwrap().0;
+                    game.selected[i] = (game.selected[i] + 1).min(game.size[1] - 1);
+                },
 
-                    // flagging and opening
-                    Event::Key(KeyEvent {
-                        code: KeyCode::Char('j'),
-                        kind: KeyEventKind::Press,
-                        ..
-                    }) => game.open(),
-                    Event::Key(KeyEvent {
-                        code: KeyCode::Char('k'),
-                        kind: KeyEventKind::Press,
-                        ..
-                    }) => game.flag(),
+                // flagging and opening
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('j'),
+                    kind: KeyEventKind::Press,
+                    ..
+                }) => game.open(),
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('k'),
+                    kind: KeyEventKind::Press,
+                    ..
+                }) => game.flag(),
 
-                    Event::Key(KeyEvent {
-                        code: KeyCode::Backspace,
-                        kind: KeyEventKind::Press,
-                        ..
-                    }) => game = new_game(),
-                    // TODO: mouse nav
-                    // Event::Mouse(MouseEvent {
-                    //     kind: MouseEventKind::Down(MouseButton::Left),
-                    //     column,
-                    //     row,
-                    //     ..
-                    // }) => game.selected = vec![
-                    //     (column as usize / 2).min(game.size[0] - 1),
-                    //     (row.saturating_sub(1) as usize).min(game.size[1] - 1),
-                    // ],
-                    Event::Resize(..) => queue!(stdout, terminal::Clear(terminal::ClearType::All)).unwrap(),
-                    _ => continue,
-                }
+                Event::Key(KeyEvent {
+                    code: KeyCode::Backspace,
+                    kind: KeyEventKind::Press,
+                    ..
+                }) => game = new_game(),
+                // TODO: mouse nav
+                // Event::Mouse(MouseEvent {
+                //     kind: MouseEventKind::Down(MouseButton::Left),
+                //     column,
+                //     row,
+                //     ..
+                // }) => game.selected = vec![
+                //     (column as usize / 2).min(game.size[0] - 1),
+                //     (row.saturating_sub(1) as usize).min(game.size[1] - 1),
+                // ],
+                Event::Resize(..) => queue!(stdout, terminal::Clear(terminal::ClearType::All)).unwrap(),
+                _ => continue,
             }
+        } else {
+            continue
         }
+
         render(&mut stdout, &game);
-        let elapsed = started_at.elapsed().unwrap().as_micros();
-        sleep(time::Duration::from_micros(mspc.checked_sub(elapsed).unwrap_or(0) as u64));
     }
 }
 
@@ -157,7 +155,12 @@ fn render_board(stdout: &mut std::io::Stdout, game: &Game) {
             Cell { typ: CellType::Number(n), opened: true, .. } => n.to_string(),
             Cell { opened: false, .. } => "?".to_string()
         }, max_width(game.size.len())).with(match game.get(&c).unwrap() {
+            #[cfg(feature = "auto_reduce")]
             Cell { typ: CellType::Number(n), opened: true, .. } if n.abs_diff(minus) == 0 => Color::Black,
+            #[cfg(feature = "auto_reduce")]
+            Cell { typ: CellType::Number(n), opened: true, .. } if n.checked_sub(minus).is_none() => Color::Red,
+            #[cfg(not(feature = "auto_reduce"))]
+            Cell { typ: CellType::Number(0), opened: true, .. } => Color::Black,
             Cell { typ: CellType::Mine, opened: true, .. } => Color::White,
             Cell { flagged: true, .. } => Color::DarkRed,
             Cell { opened: true, .. } => Color::DarkBlue,
@@ -195,7 +198,6 @@ fn coord_of(a: &[usize], g: &Game) -> (u16, u16) {
         let cm = if p { &mut ym } else { &mut xm };
 
         *c += d * (*cm + (i >> 1));
-
         *cm = g.size[i];
 
         p ^= true;
