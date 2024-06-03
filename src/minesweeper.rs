@@ -23,6 +23,8 @@ pub struct Game {
 
     pub selected: Vec<usize>,
     pub state: GameState,
+
+    pub updated_cells: Vec<usize>,
 }
 
 impl Game {
@@ -40,7 +42,9 @@ impl Game {
             size,
 
             selected: vec![0; dim],
-            state: GameState::Normal
+            state: GameState::Normal,
+
+            updated_cells: Vec::new(),
         };
         a.scramble(mines);
         a.update();
@@ -76,7 +80,9 @@ impl Game {
     }
 
     fn _open(&mut self, a: &[usize]) {
+        self.updated_cells.extend(a);
         let c = self.get_mut(a).unwrap();
+
         if !c.flagged && !c.opened {
             if matches!(c.typ, CellType::Mine) {
                 self.on_lose();
@@ -85,7 +91,7 @@ impl Game {
             c.opened = true;
 
             if matches!(c.typ, CellType::Number(0)) {
-                for i in neighbours(a, &self.size) {
+                for i in neighbours(a, &self.size.clone()) {
                     self._open(&i);
                 }
             }
@@ -120,7 +126,7 @@ impl Game {
                 let c = self.size.iter().map(|s| (rand() % *s as u64) as usize).collect::<Vec<usize>>();
                 if !matches!(self.get(&c).unwrap().typ, CellType::Mine) {
                     self.get_mut(&c).unwrap().typ = CellType::Mine;
-                    okay = true
+                    okay = true;
                 }
             }
         }
@@ -140,7 +146,8 @@ impl Game {
     }
 }
 
-pub fn neighbours(at: &[usize], dim: &[usize]) -> impl Iterator<Item = Vec<usize>> {
+pub fn neighbours<'a>(at: &'a [usize], dim: &'a [usize]) -> impl Iterator<Item = Vec<usize>> + 'a {
+    /*
     fn make(mut v: Vec<core::ops::Range<usize>>, _i: usize) -> Box<dyn Iterator<Item = Vec<usize>>> {
         if v.len() == 1 {
             Box::new(v.swap_remove(0).map(|i| vec![i]))
@@ -159,16 +166,22 @@ pub fn neighbours(at: &[usize], dim: &[usize]) -> impl Iterator<Item = Vec<usize
     }).collect::<Vec<core::ops::Range<usize>>>();
 
     make(ranges, 0)
+    */
+    cells(dim).filter(|c| is_neighbour_of(c, at))
 }
 
 #[test]
 fn nei() {
-    let i = neighbours(&[1, 2, 3], &[4, 4, 4]).collect::<Vec<_>>();
+    let i = neighbours(&[0, 1, 2, 3], &[4, 4, 4, 4]).collect::<Vec<_>>();
     println!("{i:?}");
 }
 
 pub fn is_neighbour_of(a: &[usize], b: &[usize]) -> bool {
     a.iter().zip(b.iter()).try_fold((), |_, (a, b)| (a.abs_diff(*b) < 2).then_some(())).is_some()
+}
+
+pub fn max_dist(a: &[usize], b: &[usize]) -> usize {
+    a.iter().zip(b.iter()).map(|(a, b)| a.abs_diff(*b)).max().unwrap()
 }
 
 pub fn cells<'a>(dim: &'a [usize]) -> impl Iterator<Item = Vec<usize>> + 'a {

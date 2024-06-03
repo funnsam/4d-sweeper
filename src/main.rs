@@ -1,4 +1,4 @@
-use std::{io::Write, thread::sleep, time::{self, UNIX_EPOCH}};
+use std::{io::Write, time::UNIX_EPOCH};
 use crossterm::{*, event::*, style::{Color, Attribute, Stylize}};
 
 mod minesweeper;
@@ -18,7 +18,7 @@ const NAV: &[[(KeyCode, KeyModifiers); 2]] = &[
 ];
 
 fn new_game() -> Game {
-    Game::new(vec![4, 4, 4, 4], 6)
+    Game::new(vec![3, 3, 3, 3, 3], 10)
 }
 
 fn main() {
@@ -28,8 +28,13 @@ fn main() {
     execute!(stdout, terminal::EnterAlternateScreen, cursor::Hide, event::EnableMouseCapture).unwrap();
 
     let mut game = new_game();
+    let mut mass_update = true;
 
     loop {
+        render(&mut stdout, &game, mass_update);
+        game.updated_cells.clear();
+        mass_update = false;
+
         if let Ok(key) = event::read() {
             match key {
                 Event::Key(KeyEvent {
@@ -49,7 +54,7 @@ fn main() {
                     kind: KeyEventKind::Press,
                     modifiers,
                     ..
-                }) if NAV.iter().take(game.size.len()).any(|(_, i)| i[0] == (code, modifiers)) => {
+                }) if NAV.iter().take(game.size.len()).any(|i| i[0] == (code, modifiers)) => {
                     let i = NAV.iter().enumerate().find(|(_, i)| i[0] == (code, modifiers)).unwrap().0;
                     game.selected[i] = game.selected[i].saturating_sub(1);
                 },
@@ -58,7 +63,7 @@ fn main() {
                     kind: KeyEventKind::Press,
                     modifiers,
                     ..
-                }) if NAV.iter().take(game.size.len()).any(|(_, i)| i[1] == (code, modifiers)) => {
+                }) if NAV.iter().take(game.size.len()).any(|i| i[1] == (code, modifiers)) => {
                     let i = NAV.iter().enumerate().find(|(_, i)| i[1] == (code, modifiers)).unwrap().0;
                     game.selected[i] = (game.selected[i] + 1).min(game.size[1] - 1);
                 },
@@ -79,7 +84,10 @@ fn main() {
                     code: KeyCode::Backspace,
                     kind: KeyEventKind::Press,
                     ..
-                }) => game = new_game(),
+                }) => {
+                    game = new_game();
+                    mass_update = true;
+                },
                 // TODO: mouse nav
                 // Event::Mouse(MouseEvent {
                 //     kind: MouseEventKind::Down(MouseButton::Left),
@@ -96,13 +104,11 @@ fn main() {
         } else {
             continue
         }
-
-        render(&mut stdout, &game);
     }
 }
 
-fn render(stdout: &mut std::io::Stdout, game: &Game) {
-    render_board(stdout, game);
+fn render(stdout: &mut std::io::Stdout, game: &Game, mass_update: bool) {
+    let updated = render_board(stdout, game, mass_update);
     match game.state {
         GameState::Normal => {
             queue!(stdout,
@@ -136,12 +142,21 @@ fn render(stdout: &mut std::io::Stdout, game: &Game) {
         },
     }
 
+    println!("Redrew {updated} tiles");
+
     stdout.flush().unwrap();
 }
 
-fn render_board(stdout: &mut std::io::Stdout, game: &Game) {
+fn render_board(stdout: &mut std::io::Stdout, game: &Game, mass_update: bool) -> usize {
+    let mut updated = 0;
+
     for c in cells(&game.size) {
         let at = coord_of(&c, game);
+
+        if (!mass_update && max_dist(&c, &game.selected) > 2) && // near cells
+            (!mass_update && !game.updated_cells.chunks(game.size.len()).any(|i| i == &c)) { // updated
+            continue;
+        }
 
         #[cfg(feature = "auto_reduce")]
         let minus = neighbours(&c, &game.size).filter(|c| game.get(&c).unwrap().flagged).count();
@@ -179,7 +194,10 @@ fn render_board(stdout: &mut std::io::Stdout, game: &Game) {
             cursor::MoveTo(at.0, at.1 + 1),
             style::PrintStyledContent(t)
         ).unwrap();
+        updated += 1;
     }
+
+    updated
 }
 
 fn max_width(d: usize) -> usize {
@@ -191,17 +209,29 @@ fn coord_of(a: &[usize], g: &Game) -> (u16, u16) {
     let mut y = 0;
     let mut xm = 1;
     let mut ym = 1;
+    let mut xp = 1;
+    let mut yp = 1;
     let mut p = false;
 
     for (i, d) in a.iter().enumerate() {
         let c = if p { &mut y } else { &mut x };
         let cm = if p { &mut ym } else { &mut xm };
+        let cp = if p { &mut yp } else { &mut xp };
 
-        *c += d * (*cm + (i >> 1));
+        *c += d * *cm + d * *cp;
         *cm = g.size[i];
+        *cp *= g.size[i];
 
         p ^= true;
     }
 
     ((x * (max_width(a.len()) + 1)) as u16, y as u16)
 }
+
+// ----> width * size
+// ----------> width * size
+// 1 1 | 1 1 | 1 1
+// 2 2 | 2 2 | 2 2
+// ---------------
+// 3 3 | 3 3
+// 4 4 | 4 4
